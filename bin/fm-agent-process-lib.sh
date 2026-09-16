@@ -46,6 +46,12 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
     # single binary, comm=agy with argv[0]=agy), and a glob would claim
     # unrelated commands containing that fragment.
     agy) printf 'agent' ;;
+    # droid (Factory Droid CLI) is anchored for the same reason as agy and omp:
+    # the stock process name is the bare word `droid`, and NixOS's wrapper
+    # truncates to `.droid-wrapped` (verified live, droid 0.220.0). A *droid*
+    # glob would claim unrelated commands containing that fragment (android,
+    # droidify), so both alternatives stay anchored.
+    droid|.droid-wrapped) printf 'agent' ;;
     zsh|bash|sh|dash|ash|ksh|mksh|tcsh|csh|fish) printf 'shell' ;;
     *)
       if fm_harness_path_name "$path" >/dev/null || fm_harness_path_name "$argv0" >/dev/null; then

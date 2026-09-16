@@ -867,6 +867,24 @@ fm_busy_agy_tail_busy() {
     | grep -qiE 'esc[[:space:]]+to[[:space:]]+cancel'
 }
 
+# fm_busy_droid_tail_busy: the droid-only temporary rendered-tail fallback.
+# Consumes the tail on stdin; 0 when droid's verified busy signature matches:
+# the `Press ESC to stop` token in the status row the TUI pins above the
+# composer while a turn runs (verified live on droid 0.220.0 under Herdr; the
+# idle pane renders no such row - the composer ghost is `Enter to steer` or a
+# rotating `Try "..."` suggestion instead). The braille spinner glyph and the
+# `Invoking tools...`/`Executing...` word beside it are deliberately NOT
+# matched: they are free-floating output lines, so ordinary worker output
+# echoing them would classify an idle worker as busy. droid has no verified
+# firstmate turn-end hook yet (a Stop-hook surface exists but is unwired), so
+# this fallback is the only pane-side source; it is never armed as a semantic
+# writer (fm_busy_sources_for_harness trusts nothing for droid).
+# FM_BUSY_DROID_REGEX overrides the signature.
+fm_busy_droid_tail_busy() {
+  grep -v '^[[:space:]]*$' | tail -12 \
+    | grep -qiE "${FM_BUSY_DROID_REGEX:-Press[[:space:]]+ESC[[:space:]]+to[[:space:]]+stop}"
+}
+
 # fm_busy_classify: semantic classification for a task whose endpoint the
 # caller has already established as present. Prints "<verdict> <source>":
 # busy|idle|unknown plus the producing source (see header). Never probes
@@ -1013,6 +1031,27 @@ fm_busy_classify() {  # <backend> <target> <harness> <id> <state-dir> [tail40]
         printf 'busy agy-regex'
       else
         printf 'unknown agy-regex'
+      fi
+      return 0
+      ;;
+    droid)
+      if [ -z "$tail40" ]; then
+        if command -v fm_backend_capture >/dev/null 2>&1; then
+          tail40=$(fm_backend_capture "$backend" "$target" 40 2>/dev/null) || {
+            printf 'unknown capture-failed'
+            return 0
+          }
+        else
+          printf 'unknown capture-failed'
+          return 0
+        fi
+      fi
+      # Best-effort like agy: a long turn can scroll the busy marker out of
+      # the captured tail, so its absence means "can't tell," never idle.
+      if printf '%s' "$tail40" | fm_busy_droid_tail_busy; then
+        printf 'busy droid-regex'
+      else
+        printf 'unknown droid-regex'
       fi
       return 0
       ;;

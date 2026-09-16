@@ -415,9 +415,13 @@ FM_COMPOSER_SHELL_PROMPT_GLYPHS=$(printf '%s\n' '>' '$' '%' '#')
 # hence the unanchored tail). cursor-agent renders
 # two, both anchored: `Plan, search, build anything` in a fresh session and
 # `Add a follow-up` once a turn has completed (verified live on cursor-agent
-# 2026.08.11-e8db854). FM_COMPOSER_IDLE_RE overrides for an unverified harness;
+# 2026.08.11-e8db854). droid renders two, both with an unanchored tail: the
+# rotating quoted suggestion `Try "..."` in a fresh session and `Enter to
+# steer · Ctrl+Enter to queue` beside it (verified live on droid 0.220.0; the
+# ghost renders even while a turn runs, so the strip must not depend on idle).
+# FM_COMPOSER_IDLE_RE overrides for an unverified harness;
 # matching is case-insensitive.
-FM_COMPOSER_IDLE_RE_DEFAULT='^Type a message\.\.\.$|^Ask anything(\.\.\.|…)|^Plan, search, build anything$|^Add a follow-up$'
+FM_COMPOSER_IDLE_RE_DEFAULT='^Type a message\.\.\.$|^Ask anything(\.\.\.|…)|^Plan, search, build anything$|^Add a follow-up$|^Enter to steer|^Try "'
 
 # Opencode draws a mode/model footer line INSIDE its left-bar composer
 # ("Build · GPT-5.5 Fast OpenAI · high"). It is composer furniture, not typed
