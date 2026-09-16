@@ -168,6 +168,11 @@ The crewmate/scout-only Rovo CLI 202609.1.2 adapter added `*rovo*` to the same g
 `#{pane_current_command}` reported the truncated on-disk binary name `atlassian_cli_r` - macOS's 15-char `comm` truncation cuts `atlassian_cli_rovodev` off just before the `rovo` substring begins, the same truncation-volatility class codex/kimi's own patch-release name drift shows above - while the foreground ps-based `comm` correctly reported `rovo`, so `fm_backend_tmux_agent_state` returned `alive` through that primary source; the two-independent-name-sources design is exactly why the truncated title does not break the verdict.
 [`rovo.md`](rovo.md#backend-liveness-tmux-verified-live-herdr-placement-verified-live-with-a-herdr-side-agent-detection-gap) owns the fuller record, including the busy/interrupt/exit facts captured in that same live tmux session and the herdr agent-detection gap found when herdr placement was verified live in an isolated lab session.
 
+The crewmate/scout-only droid 0.220.0 adapter was verified live on 2026-09-16 on Linux x86_64 (NixOS) through the Herdr backend (herdr 0.9.0), covering launch with an auto-submitting positional brief, the folder-trust dialog and its `trustedFolders` store in `~/.factory/settings.json`, the pinned `Press ESC to stop` busy row, single-Escape interrupt with no repollution, and the `/exit` exit command.
+Detection is ancestry-only over the anchored `droid` and `.droid-wrapped` names (the NixOS wrapper's truncated 15-char `comm`), with no environment marker promoted because `FACTORY_*` variables are not proven to reach daemon-spawned worker panes.
+No tmux fact was claimed and no tmux liveness run was exercised for this adapter; the drift-guard table above is the seven-adapter 2026-08-03 run and predates droid.
+[`droid.md`](droid.md) owns the fuller record and the still-unproven list.
+
 Bounded observed output:
 
 ```text

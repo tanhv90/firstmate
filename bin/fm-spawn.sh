@@ -135,7 +135,7 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|droid)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
@@ -284,6 +284,7 @@
 #     __GEMINISETTINGS__ firstmate-owned per-task gemini settings file (busy-state hooks)
 #     __ROVOBIN__   resolved, rovo-verified executable for a rovo launch
 #     __AGYBIN__    resolved, agy-verified executable for an agy launch
+#     __DROIDBIN__  resolved, droid-verified executable for a droid launch
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -1860,6 +1861,31 @@ launch_template() {
   # when a supported effort is requested, since a second --config-override
   # would silently discard the first (confirmed live).
   rovo) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS __ROVOBIN__ run --yolo __MODELFLAG____ROVOCONFIGOVERRIDE__' ;;
+  # droid (Factory Droid CLI): a positional prompt starts the supervised
+  # interactive session and auto-submits it, so the brief rides the launch
+  # command exactly as it does for grok and gemini (verified live: a
+  # multi-line-shaped positional prompt started and finished its turn with no
+  # extra Enter, droid 0.220.0 under Herdr). --auto high is the autonomy level
+  # whose status row reads `Auto (High) · allow all commands`, the targeted
+  # equivalent of grok's --always-approve, which an unattended crewmate needs.
+  # Droid exposes no model or reasoning-effort flag in the interactive TUI
+  # (both are exec mode only: -m/--model and -r/--reasoning-effort, checked
+  # against 0.220.0 --help), so both shared axes are deliberately omitted here
+  # and stay in task metadata only, per the record-and-omit contract.
+  # A fresh worktree parks the TUI on a folder-trust dialog ("Trust this
+  # folder?"); the worktree is pre-registered in the captain's own
+  # ~/.factory/settings.json trustedFolders before launch (bin/fm-droid-trust.sh)
+  # and the post-launch gate (droid_wait_for_working) answers the preselected
+  # safe default ("1. Trust this folder", Enter to confirm) with a single Enter
+  # if the dialog renders anyway, then requires the busy signature before the
+  # spawn reports success.
+  # The foreign primary markers are cleared for the same reason cursor clears
+  # them: droid publishes no marker of its own and inherited markers must not
+  # outrank droid's ancestry verdict. Droid has a hook surface (a Stop hook
+  # was observed firing under the orca agent-hook integration), but no
+  # firstmate turn-end hook is verified for it yet, so busy state is a
+  # rendered-tail fallback (bin/fm-busy-lib.sh) and nothing is armed below.
+  droid) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS __DROIDBIN__ --auto high "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   *) return 1 ;;
   esac
 }
@@ -1980,6 +2006,12 @@ omp)
 agy)
   AGY_BIN=$(resolve_pi_executable agy) || {
     echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
+    exit 1
+  }
+  ;;
+droid)
+  DROID_BIN=$(resolve_pi_executable droid) || {
+    echo "error: droid executable not found on PATH; install Factory Droid or select a different verified harness" >&2
     exit 1
   }
   ;;
@@ -3430,6 +3462,59 @@ agy_spawn_fail() {  # <detail>
   rovo_endpoint_cleanup
 }
 
+# droid carries its brief on the launch command, so it needs no delivery gate,
+# but a worktree droid does not trust parks the TUI on the folder-trust dialog
+# ("Trust this folder?") and an unanswered dialog leaves the brief unsubmitted.
+# The trust is pre-registered before launch (bin/fm-droid-trust.sh), and this
+# gate is the backstop in the agy shape: answer the dialog once with the
+# preselected safe default ("1. Trust this folder", Enter to confirm) if it
+# renders anyway, then require positive proof that the brief is being
+# processed - the pinned `Press ESC to stop` row through fm_busy_classify -
+# before the spawn reports success. The busy verdict is trusted only when the
+# path was pre-registered or the dialog has been seen and answered, the same
+# ordering rule the agy gate documents.
+DROID_TRUST_DIALOG='Trust this folder?'
+DROID_TRUST_ANSWERED=0
+
+droid_capture() {
+  fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
+}
+
+droid_pane_shows_trust_dialog() {  # <plain-pane-capture>
+  printf '%s\n' "$1" | grep -Fq "$DROID_TRUST_DIALOG"
+}
+
+droid_pane_is_working() {  # <plain-pane-capture>
+  case "$(fm_busy_classify "$BACKEND" "$T" droid "$ID" "$STATE" "$1")" in
+    busy*) return 0 ;;
+  esac
+  return 1
+}
+
+droid_wait_for_working() {
+  local pane i=0 max=${FM_DROID_READY_POLLS:-60} interval=${FM_DROID_POLL_INTERVAL:-0.5}
+  while [ "$i" -lt "$max" ]; do
+    pane=$(droid_capture)
+    if droid_pane_shows_trust_dialog "$pane"; then
+      if [ "$DROID_TRUST_ANSWERED" -eq 0 ]; then
+        spawn_send_key "$T" Enter
+        DROID_TRUST_ANSWERED=1
+      fi
+    elif [ "${DROID_TRUST_PREREGISTERED:-0}" -eq 1 ] || [ "$DROID_TRUST_ANSWERED" -eq 1 ]; then
+      droid_pane_is_working "$pane" && return 0
+    fi
+    i=$((i + 1))
+    [ "$i" -ge "$max" ] || sleep "$interval"
+  done
+  return 1
+}
+
+droid_spawn_fail() {  # <detail>
+  printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
+  echo "error: $1; inspect window $T" >&2
+  rovo_endpoint_cleanup
+}
+
 if [ "$RELAUNCH" -eq 1 ]; then
   # No worktree is acquired: the recorded one is reused as-is. What must be
   # proven instead is that the adopted endpoint's shell is actually sitting in
@@ -3574,6 +3659,7 @@ fi
 # it has done so. agy is crewmate/scout only (refused above for secondmate), so
 # only the worktree shape applies.
 AGY_TRUST_PREREGISTERED=0
+DROID_TRUST_PREREGISTERED=0
 case "$HARNESS" in
 claude*)
   if [ "$KIND" = secondmate ]; then
@@ -3592,6 +3678,15 @@ agy)
       AGY_TRUST_PREREGISTERED=1
     else
       echo "warning: could not pre-register agy workspace trust for $WT; the launch will answer the folder-trust dialog in window $T instead" >&2
+    fi
+  fi
+  ;;
+droid)
+  if [ "$KIND" != secondmate ]; then
+    if "$FM_ROOT/bin/fm-droid-trust.sh" "$WT" "$PROJ_ABS" >/dev/null; then
+      DROID_TRUST_PREREGISTERED=1
+    else
+      echo "warning: could not pre-register droid folder trust for $WT; the launch will answer the folder-trust dialog in window $T instead" >&2
     fi
   fi
   ;;
@@ -4242,10 +4337,11 @@ cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemini-settings.json")"} ;;
 omp) LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"} ;;
 agy) LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"} ;;
+droid) LAUNCH=${LAUNCH//__DROIDBIN__/"$(shell_quote "$DROID_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
 case "$HARNESS" in
-claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy)
+claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy | droid)
   LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
   ;;
 esac
@@ -4425,6 +4521,18 @@ if [ "$HARNESS" = agy ]; then
       agy_spawn_fail "agy did not start processing its brief in the pre-trusted worktree in window $T"
     else
       agy_spawn_fail "agy never showed its folder-trust dialog on an unregistered worktree in window $T, so the brief could not be confirmed to run there"
+    fi
+    exit 1
+  fi
+fi
+if [ "$HARNESS" = droid ]; then
+  if ! droid_wait_for_working; then
+    if [ "$DROID_TRUST_ANSWERED" -eq 1 ]; then
+      droid_spawn_fail "droid did not start processing its brief after the folder-trust dialog was answered in window $T"
+    elif [ "$DROID_TRUST_PREREGISTERED" -eq 1 ]; then
+      droid_spawn_fail "droid did not start processing its brief in the pre-trusted worktree in window $T"
+    else
+      droid_spawn_fail "droid never showed its folder-trust dialog on an unregistered worktree in window $T, so the brief could not be confirmed to run there"
     fi
     exit 1
   fi
